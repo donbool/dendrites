@@ -1,9 +1,9 @@
-# run_experiment.py
+# CLI pipeline: train BP, train DLL, evaluate
 
 import torch
 import argparse
 
-from models.bp_rnn import BPSentimentRNN
+from models.bp_rnn import BPRNNSentiment
 from models.dll_rnn import DLLSentimentRNN
 from train.train_bp import train_bp
 from train.train_dll import train_dll
@@ -25,11 +25,12 @@ def run_experiment(args):
     if args.run_bp:
         print("\n========== TRAINING BP BASELINE ==========\n")
         
-        bp_model = BPSentimentRNN(
+        bp_model = BPRNNSentiment(
             vocab_size=len(vocab),
             embed_dim=args.embed_dim,
             hidden_size=args.hidden_size,
             num_classes=2,
+            seq_len=args.max_len,
             device=device
         )
 
@@ -55,7 +56,9 @@ def run_experiment(args):
             vocab_size=len(vocab),
             embed_dim=args.embed_dim,
             hidden_size=args.hidden_size,
-            output_size=2,
+            num_classes=2,
+            seq_len=args.max_len,
+            batch_size=args.batch_size,
             device=device
         )
 
