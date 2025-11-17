@@ -11,7 +11,7 @@ import numpy as np
 
 def evaluate_model(model, data_loader, model_type="bp", device="cuda"):
     """
-    Comprehensive evaluation of a trained model.
+    Comprehensive evaluation of a trained model on sequence tagging task.
 
     Args:
         model: Trained model (BPRNNSentiment or DLLSentimentRNN)
@@ -31,25 +31,39 @@ def evaluate_model(model, data_loader, model_type="bp", device="cuda"):
     num_batches = 0
 
     with torch.no_grad():
-        for token_ids, labels in data_loader:
-            token_ids = token_ids.to(device)
-            labels = labels.to(device)
+        for batch in data_loader:
+            token_ids = batch[0].to(device)
+            labels = batch[1].to(device)
+            mask = batch[2].to(device)  # (B, T) - 1 for real tokens, 0 for padding
 
             # Forward pass
-            logits = model(token_ids)  # (B, 2)
+            logits = model(token_ids)  # (B, T, num_classes)
 
-            # Loss (CE)
-            loss = F.cross_entropy(logits, labels)
+            # Flatten for loss computation
+            B, T, C = logits.shape
+            logits_flat = logits.reshape(B * T, C)
+            labels_flat = labels.reshape(B * T)
+            mask_flat = mask.reshape(B * T)
+
+            # Loss (CE) with masking - only compute on real tokens
+            loss_flat = F.cross_entropy(logits_flat, labels_flat, reduction='none')
+            loss = (loss_flat * mask_flat).sum() / mask_flat.sum()
             total_loss += loss.item()
             num_batches += 1
 
-            # Predictions
-            preds = torch.argmax(logits, dim=-1)  # (B,)
+            # Predictions - only on real tokens
+            preds = torch.argmax(logits, dim=-1)  # (B, T)
+            preds_flat = preds.reshape(B * T)
+
+            # Apply mask: only keep predictions for real tokens
+            valid_preds = preds_flat[mask_flat.bool()].cpu().numpy()
+            valid_labels = labels_flat[mask_flat.bool()].cpu().numpy()
+            valid_logits = logits_flat[mask_flat.bool()].cpu().numpy()
 
             # Store for metrics
-            all_preds.append(preds.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
-            all_logits.append(logits.cpu().numpy())
+            all_preds.append(valid_preds)
+            all_labels.append(valid_labels)
+            all_logits.append(valid_logits)
 
     # Concatenate all batches
     all_preds = np.concatenate(all_preds)
@@ -59,13 +73,14 @@ def evaluate_model(model, data_loader, model_type="bp", device="cuda"):
 
     # Compute metrics
     acc = accuracy_score(all_labels, all_preds)
-    precision = precision_score(all_labels, all_preds, zero_division=0)
-    recall = recall_score(all_labels, all_preds, zero_division=0)
-    f1 = f1_score(all_labels, all_preds, zero_division=0)
+    precision = precision_score(all_labels, all_preds, zero_division=0, average='weighted')
+    recall = recall_score(all_labels, all_preds, zero_division=0, average='weighted')
+    f1 = f1_score(all_labels, all_preds, zero_division=0, average='weighted')
     conf_mat = confusion_matrix(all_labels, all_preds)
 
-    # AUC (for positive class)
-    if len(np.unique(all_labels)) > 1:
+    # AUC (only if binary classification, otherwise set to 0)
+    num_classes = all_logits.shape[1]
+    if num_classes == 2 and len(np.unique(all_labels)) > 1:
         auc = roc_auc_score(all_labels, all_logits[:, 1])
     else:
         auc = 0.0

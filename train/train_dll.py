@@ -42,28 +42,38 @@ def train_dll(
         total_correct = 0
         total_examples = 0
 
-        for token_ids, labels in train_loader:
+        for batch in train_loader:
 
-            token_ids = token_ids.to(device)
-            labels = labels.to(device)
+            token_ids = batch[0].to(device)
+            labels = batch[1].to(device)
+            mask = batch[2].to(device)  # (B, T)
 
             # --- 1. Forward pass ---
-            logits = model(token_ids)  # (B, C)
+            logits = model(token_ids)  # (B, T, C)
 
             # --- 2. Logging CE loss (monitoring only) ---
             with torch.no_grad():
-                log_probs = F.log_softmax(logits, dim=-1)
-                ce_loss = -(log_probs[torch.arange(labels.size(0)), labels]).mean()
+                B, T, C = logits.shape
+                logits_flat = logits.reshape(B * T, C)
+                labels_flat = labels.reshape(B * T)
+                mask_flat = mask.reshape(B * T)
+
+                log_probs = F.log_softmax(logits_flat, dim=-1)
+                ce_loss_flat = -(log_probs[torch.arange(B * T), labels_flat])
+                ce_loss = (ce_loss_flat * mask_flat).sum() / mask_flat.sum()
 
             total_loss += ce_loss.item()
 
-            # --- 3. Accuracy ---
-            preds = torch.argmax(logits, dim=-1)
-            total_correct += (preds == labels).sum().item()
-            total_examples += labels.size(0)
+            # --- 3. Accuracy (only on non-padding tokens) ---
+            preds = torch.argmax(logits, dim=-1)  # (B, T)
+            correct = ((preds == labels) * mask.bool()).sum().item()
+            examples = mask.sum().item()
+
+            total_correct += correct
+            total_examples += examples
 
             # --- 4. DLL update (actual learning happens here, no backprop) ---
-            model.dll_update(labels, epoch)
+            model.dll_update(labels, mask, epoch)
 
         avg_loss = total_loss / len(train_loader)
         train_acc = total_correct / total_examples
@@ -100,7 +110,7 @@ def train_dll(
 
 def evaluate_dll(model, data_loader, device="cuda"):
     """
-    Standard evaluation loop (same as BP evaluation, DLL has no special eval).
+    Evaluation loop for DLL on sequence tagging task.
     """
     model.eval()
     total_loss = 0
@@ -108,19 +118,29 @@ def evaluate_dll(model, data_loader, device="cuda"):
     total_examples = 0
 
     with torch.no_grad():
-        for token_ids, labels in data_loader:
+        for batch in data_loader:
 
-            token_ids = token_ids.to(device)
-            labels = labels.to(device)
+            token_ids = batch[0].to(device)
+            labels = batch[1].to(device)
+            mask = batch[2].to(device)  # (B, T)
 
-            logits = model(token_ids)
-            log_probs = F.log_softmax(logits, dim=-1)
-            ce_loss = -(log_probs[torch.arange(labels.size(0)), labels]).mean()
+            logits = model(token_ids)  # (B, T, C)
 
-            preds = torch.argmax(logits, dim=-1)
-            total_correct += (preds == labels).sum().item()
-            total_examples += labels.size(0)
+            B, T, C = logits.shape
+            logits_flat = logits.reshape(B * T, C)
+            labels_flat = labels.reshape(B * T)
+            mask_flat = mask.reshape(B * T)
 
+            log_probs = F.log_softmax(logits_flat, dim=-1)
+            ce_loss_flat = -(log_probs[torch.arange(B * T), labels_flat])
+            ce_loss = (ce_loss_flat * mask_flat).sum() / mask_flat.sum()
+
+            preds = torch.argmax(logits, dim=-1)  # (B, T)
+            correct = ((preds == labels) * mask.bool()).sum().item()
+            examples = mask.sum().item()
+
+            total_correct += correct
+            total_examples += examples
             total_loss += ce_loss.item()
 
     avg_loss = total_loss / len(data_loader)

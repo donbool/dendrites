@@ -97,9 +97,10 @@ class DLL_RNN_Model(object):
                 self.y[i] = linear(self.Wy @ self.hu[i+1])
             return self.y
 
-    def update_weights(self, target_seq, epoch_num):
+    def update_weights(self, target_seq, epoch_num, mask_seq=None):
         """
         target_seq: (T, output_size, B)
+        mask_seq: (T, B) optional mask (1 for real tokens, 0 for padding)
         """
         with torch.no_grad():
             # the last dim of ehs is not used, because we don't need hx[0] - hu[0]
@@ -109,6 +110,11 @@ class DLL_RNN_Model(object):
             # backward pass for dendritic errors
             for i, tar in reversed(list(enumerate(target_seq))):
                 eys[i] = tar - self.y[i]
+
+                # Apply mask: zero out errors for padding positions
+                if mask_seq is not None:
+                    eys[i] = eys[i] * mask_seq[i].unsqueeze(0)  # (C, B) * (1, B)
+
                 deltah = self.theta_y.T @ (
                     eys[i] * linear_deriv(self.Wy @ self.hu[i+1])
                 )
@@ -229,7 +235,7 @@ class DLLSentimentRNN(nn.Module):
         token_ids: (B, T) with B == batch_size, T == seq_len
 
         Returns:
-            logits: (B, num_classes)  (from the last time step)
+            logits: (B, T, num_classes)  for sequence tagging (per-token)
         """
         B, T = token_ids.shape
         assert B == self.batch_size, (
@@ -246,37 +252,52 @@ class DLLSentimentRNN(nn.Module):
         inputs_seq = emb.permute(1, 2, 0)  # (T, D, B)
 
         y_seq = self.dll_core.forward(inputs_seq)  # (T, C, B)
-        # use last time step for classification
-        y_last = y_seq[-1]  # (C, B)
-        logits = y_last.transpose(0, 1)  # (B, C)
+        # return all timesteps for sequence tagging
+        logits = y_seq.permute(2, 0, 1)  # (B, T, C)
         return logits
 
-    def dll_update(self, labels: torch.Tensor, epoch: int):
+    def dll_update(self, labels: torch.Tensor, mask: torch.Tensor, epoch: int):
         """
-        Apply DLL weight + theta updates for a batch.
+        Apply DLL weight + theta updates for a batch (sequence tagging).
 
-        labels: (B,) int64 class labels
+        labels: (B, T) int64 POS tags (per-token labels)
+        mask:   (B, T) float32 mask (1 for real tokens, 0 for padding)
         epoch:  int, current training epoch (for fix_theta_until)
         """
-        B = labels.shape[0]
+        B, T = labels.shape
         assert B == self.batch_size, (
             f"Batch size mismatch in dll_update: expected {self.batch_size}, got {B}"
         )
+        assert T == self.dll_core.seq_len, (
+            f"Sequence length mismatch in dll_update: expected {self.dll_core.seq_len}, got {T}"
+        )
 
         device = self.device
-        T = self.dll_core.seq_len
         C = self.dll_core.output_size
 
-        # one-hot targets: (B, C)
-        targets_onehot = torch.zeros((B, C), device=device)
-        targets_onehot[torch.arange(B, device=device), labels] = 1.0
-
-        # For classification, we broadcast the label across all time steps:
+        # Create one-hot encoded targets for each timestep
         # target_seq: (T, C, B)
         target_seq = torch.zeros((T, C, B), device=device)
-        # broadcasting: same label at each time step
-        for t in range(T):
-            target_seq[t] = targets_onehot.T  # (C, B)
+        mask_seq = torch.zeros((T, B), device=device)  # (T, B) mask for masking errors
 
-        # Call the exact DLL update rule
-        self.dll_core.update_weights(target_seq, epoch)
+        for t in range(T):
+            # Get labels and mask at timestep t: (B,)
+            labels_t = labels[:, t].long()
+            mask_t = mask[:, t]  # (B,)
+
+            # Create one-hot: (B, C)
+            targets_onehot_t = torch.zeros((B, C), device=device)
+
+            # Only set one-hot for non-padding positions
+            valid_mask = (mask_t > 0.5)  # boolean mask for real tokens
+            if valid_mask.any():
+                valid_indices = torch.arange(B, device=device)[valid_mask]
+                valid_labels = labels_t[valid_mask]
+                targets_onehot_t[valid_indices, valid_labels] = 1.0
+
+            # Store transposed: (C, B)
+            target_seq[t] = targets_onehot_t.T
+            mask_seq[t] = mask_t  # Store mask for this timestep
+
+        # Call the exact DLL update rule with masking
+        self.dll_core.update_weights(target_seq, epoch, mask_seq=mask_seq)

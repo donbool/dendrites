@@ -12,7 +12,7 @@ from models.bp_rnn import BPRNNSentiment
 from models.dll_rnn import DLLSentimentRNN
 from train.train_bp import train_bp
 from train.train_dll import train_dll
-from data.dataset_sst2 import load_sst2
+from data.dataset_pos_tagging import load_pos_tagging
 from experiments.metrics import MetricsLogger
 from experiments.eval_models import evaluate_model, print_metrics, compare_models
 
@@ -26,8 +26,8 @@ def run_experiment(args):
         device = "cpu"
     print(f"Using device: {device}")
 
-    print("Loading SST-2 dataset...")
-    train_loader, val_loader, vocab = load_sst2(
+    print("Loading Penn Treebank POS tagging dataset...")
+    train_loader, val_loader, word_vocab, pos_vocab = load_pos_tagging(
         batch_size=args.batch_size,
         max_len=args.max_len
     )
@@ -40,10 +40,10 @@ def run_experiment(args):
         print("\n========== TRAINING BP BASELINE ==========\n")
 
         bp_model = BPRNNSentiment(
-            vocab_size=len(vocab),
+            vocab_size=len(word_vocab),
             embed_dim=args.embed_dim,
             hidden_size=args.hidden_size,
-            num_classes=2,
+            num_classes=len(pos_vocab),
             seq_len=args.max_len,
             device=device
         )
@@ -76,10 +76,10 @@ def run_experiment(args):
         print("\n========== TRAINING DLL MODEL ==========\n")
 
         dll_model = DLLSentimentRNN(
-            vocab_size=len(vocab),
+            vocab_size=len(word_vocab),
             embed_dim=args.embed_dim,
             hidden_size=args.hidden_size,
-            num_classes=2,
+            num_classes=len(pos_vocab),
             seq_len=args.max_len,
             batch_size=args.batch_size,
             device=device,

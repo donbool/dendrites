@@ -40,7 +40,7 @@ def train_bp(
 
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(reduction='none')
 
     for epoch in range(num_epochs):
         model.train()
@@ -48,14 +48,24 @@ def train_bp(
         total_correct = 0
         total_examples = 0
 
-        for token_ids, labels in train_loader:
-            token_ids = token_ids.to(device)
-            labels = labels.to(device)
+        for batch in train_loader:
+            token_ids = batch[0].to(device)
+            labels = batch[1].to(device)
+            mask = batch[2].to(device)  # (B, T) - 1 for real tokens, 0 for padding
 
             optimizer.zero_grad()
 
-            logits = model(token_ids)   # (B, num_classes)
-            loss = criterion(logits, labels)
+            logits = model(token_ids)   # (B, T, num_classes)
+
+            # Flatten for loss computation
+            B, T, C = logits.shape
+            logits_flat = logits.reshape(B * T, C)
+            labels_flat = labels.reshape(B * T)
+            mask_flat = mask.reshape(B * T)
+
+            loss_flat = criterion(logits_flat, labels_flat)
+            # Apply mask: only compute loss on real tokens (non-padding)
+            loss = (loss_flat * mask_flat).sum() / mask_flat.sum()
             loss.backward()
 
             # optional gradient clipping
@@ -63,11 +73,13 @@ def train_bp(
 
             optimizer.step()
 
-            # compute accuracy
-            preds = logits.argmax(dim=-1)
-            total_correct += (preds == labels).sum().item()
-            total_examples += labels.size(0)
+            # compute accuracy (only on non-padding tokens)
+            preds = logits.argmax(dim=-1)  # (B, T)
+            correct = ((preds == labels) * mask.bool()).sum().item()
+            examples = mask.sum().item()
 
+            total_correct += correct
+            total_examples += examples
             total_loss += loss.item()
 
         avg_loss = total_loss / len(train_loader)
@@ -104,7 +116,7 @@ def train_bp(
 
 def evaluate_bp(model, data_loader, criterion, device="cuda"):
     """
-    Runs validation or testing.
+    Runs validation or testing on sequence tagging task.
     """
     model.eval()
     total_loss = 0
@@ -112,17 +124,29 @@ def evaluate_bp(model, data_loader, criterion, device="cuda"):
     total_examples = 0
 
     with torch.no_grad():
-        for token_ids, labels in data_loader:
-            token_ids = token_ids.to(device)
-            labels = labels.to(device)
+        for batch in data_loader:
+            token_ids = batch[0].to(device)
+            labels = batch[1].to(device)
+            mask = batch[2].to(device)  # (B, T)
 
-            logits = model(token_ids)
-            loss = criterion(logits, labels)
+            logits = model(token_ids)  # (B, T, num_classes)
 
-            preds = logits.argmax(dim=-1)
-            total_correct += (preds == labels).sum().item()
-            total_examples += labels.size(0)
+            # Flatten for loss computation
+            B, T, C = logits.shape
+            logits_flat = logits.reshape(B * T, C)
+            labels_flat = labels.reshape(B * T)
+            mask_flat = mask.reshape(B * T)
 
+            loss_flat = criterion(logits_flat, labels_flat)
+            # Apply mask: only compute loss on real tokens
+            loss = (loss_flat * mask_flat).sum() / mask_flat.sum()
+
+            preds = logits.argmax(dim=-1)  # (B, T)
+            correct = ((preds == labels) * mask.bool()).sum().item()
+            examples = mask.sum().item()
+
+            total_correct += correct
+            total_examples += examples
             total_loss += loss.item()
 
     avg_loss = total_loss / len(data_loader)

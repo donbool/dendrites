@@ -65,7 +65,7 @@ class BPRNNSentiment(nn.Module):
         """
         token_ids: (B, T)
         Returns:
-            logits: (B, num_classes)
+            logits: (B, T, num_classes) for sequence tagging
         """
         B, T = token_ids.shape
         assert T == self.seq_len, "Pad/truncate sequences to seq_len"
@@ -73,11 +73,8 @@ class BPRNNSentiment(nn.Module):
         emb = self.embedding(token_ids.to(self.device))  # (B, T, D)
 
         # RNN forward
-        outputs, h_last = self.rnn(emb)  # h_last: (1, B, H) or (layers, B, H)
+        outputs, h_last = self.rnn(emb)  # outputs: (B, T, H)
 
-        # If GRU, h_last is already final hidden state
-        # If RNN, same behavior
-        final_h = h_last[-1]  # (B, H)
-
-        logits = self.classifier(final_h)  # (B, C)
+        # Apply classifier to each timestep
+        logits = self.classifier(outputs)  # (B, T, num_classes)
         return logits
