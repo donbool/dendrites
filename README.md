@@ -1,6 +1,6 @@
 # dendritic localized learning vs backpropagation on SST-2
 
-**research question**: can biologically plausible dendritic localized learning (DLL) match standard backpropagation on NLP tasks?
+can biologically plausible dendritic localized learning (DLL) match standard backpropagation on NLP tasks?
 
 ## proj overview
 
