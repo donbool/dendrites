@@ -48,8 +48,16 @@ def load_sst2(batch_size=32, max_len=32):
         - vocab
     """
 
-    print("Loading SST-2 from HuggingFace (cached locally)...")
-    dataset = load_dataset("glue", "sst2", cache_dir="./data/cache")
+    import os
+    cache_dir = "./data/cache"
+
+    # Check if dataset is already cached
+    if os.path.exists(cache_dir) and len(os.listdir(cache_dir)) > 0:
+        print(f"✓ Found cached dataset in {cache_dir}")
+    else:
+        print(f"✗ Dataset not cached. Downloading from HuggingFace...")
+
+    dataset = load_dataset("glue", "sst2", cache_dir=cache_dir)
 
     train_sentences = dataset["train"]["sentence"]
     train_labels = dataset["train"]["label"]

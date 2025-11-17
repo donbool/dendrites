@@ -76,7 +76,8 @@ def run_experiment(args):
             num_classes=2,
             seq_len=args.max_len,
             batch_size=args.batch_size,
-            device=device
+            device=device,
+            weight_lr=args.lr_dll
         )
 
         dll_logger = MetricsLogger(log_dir="./results", model_name="dll")
@@ -110,7 +111,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--embed_dim", type=int, default=300)
+    parser.add_argument("--embed_dim", type=int, default=150)
     parser.add_argument("--hidden_size", type=int, default=128)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--max_len", type=int, default=32)
@@ -118,7 +119,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs_bp", type=int, default=5)
     parser.add_argument("--epochs_dll", type=int, default=5)
 
-    parser.add_argument("--lr_bp", type=float, default=1e-3)
+    parser.add_argument("--lr_bp", type=float, default=5e-3)
+    parser.add_argument("--lr_dll", type=float, default=1e-2)
 
     parser.add_argument("--run_bp", action="store_true")
     parser.add_argument("--run_dll", action="store_true")
