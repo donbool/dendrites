@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn.functional as F
+from experiments.metrics import MetricsLogger
 
 
 def train_dll(
@@ -10,7 +11,8 @@ def train_dll(
     val_loader=None,
     num_epochs=5,
     device="cuda",
-    verbose=True
+    verbose=True,
+    metrics_logger=None,
 ):
     """
     Training loop for DLL, matching the DLL algorithm in the paper.
@@ -61,13 +63,28 @@ def train_dll(
         if verbose:
             print(f"[Epoch {epoch+1}/{num_epochs}] DLL Train Loss: {avg_loss:.4f} | Train Acc: {train_acc:.4f}")
 
-        # ----------------------------------
-        # Optional validation
-        # ----------------------------------
-        if val_loader is not None:
-            val_acc, val_loss = evaluate_dll(model, val_loader, device)
-            if verbose:
-                print(f"                   DLL Val   Loss: {val_loss:.4f} | Val Acc:   {val_acc:.4f}")
+        # Log metrics
+        if metrics_logger is not None:
+            val_acc_log = None
+            val_loss_log = None
+
+            # ----------------------------------
+            # Optional validation
+            # ----------------------------------
+            if val_loader is not None:
+                val_acc_log, val_loss_log = evaluate_dll(model, val_loader, device)
+                if verbose:
+                    print(f"                   DLL Val   Loss: {val_loss_log:.4f} | Val Acc:   {val_acc_log:.4f}")
+
+            metrics_logger.log_epoch(epoch, avg_loss, train_acc, val_loss_log, val_acc_log)
+        else:
+            # ----------------------------------
+            # Optional validation
+            # ----------------------------------
+            if val_loader is not None:
+                val_acc, val_loss = evaluate_dll(model, val_loader, device)
+                if verbose:
+                    print(f"                   DLL Val   Loss: {val_loss:.4f} | Val Acc:   {val_acc:.4f}")
 
     return model
 

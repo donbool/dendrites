@@ -3,3 +3,11 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# personal:
+PAPER_WORKFLOW.md
+run_full_pipeline.sh
+bp_model.pt
+data/cache/
+dll_Wh.pt
+dll_Wy.pt
