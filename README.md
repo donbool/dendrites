@@ -8,7 +8,7 @@ this project implements and compares two learning algorithms:
 - **BP baseline**: standard RNN with backpropagation + adam optimizer
 - **DLL**: biologically plausible three-factor learning rule from Lv et al. (2025)
 
-both models train on SST-2 sentiment classification with identical architecture and hyperparameters. Only the learning rule differs.
+both models train on SST-2 sentiment classification with identical architecture and hyperparameters. ONLY the learning rule differs.
 
 ## architecture
 
