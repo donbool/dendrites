@@ -27,8 +27,17 @@ def train_bp(
         num_epochs: int
         lr: learning rate
         max_grad_norm: gradient clipping (important for RNN stability)
-        device: "cuda" or "cpu"
+        device: "cuda", "mps", or "cpu"
     """
+    # Ensure device is set up correctly (mps, cuda, or cpu)
+    if not device:
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+        else:
+            device = "cpu"
+
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()

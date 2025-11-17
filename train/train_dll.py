@@ -22,8 +22,16 @@ def train_dll(
         train_loader: dataloader yielding (token_ids, labels)
         val_loader: optional validation loader
         num_epochs: int
-        device: "cuda" or "cpu"
+        device: "cuda", "mps", or "cpu"
     """
+    # Ensure device is set up correctly (mps, cuda, or cpu)
+    if not device:
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+        else:
+            device = "cpu"
 
     model = model.to(device)
 

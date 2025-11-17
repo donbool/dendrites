@@ -18,7 +18,13 @@ from experiments.eval_models import evaluate_model, print_metrics, compare_model
 
 
 def run_experiment(args):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+    print(f"Using device: {device}")
 
     print("Loading SST-2 dataset...")
     train_loader, val_loader, vocab = load_sst2(
@@ -119,8 +125,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs_bp", type=int, default=5)
     parser.add_argument("--epochs_dll", type=int, default=5)
 
-    parser.add_argument("--lr_bp", type=float, default=5e-3)
-    parser.add_argument("--lr_dll", type=float, default=1e-2)
+    parser.add_argument("--lr_bp", type=float, default=1e-2)
+    parser.add_argument("--lr_dll", type=float, default=5e-4)
 
     parser.add_argument("--run_bp", action="store_true")
     parser.add_argument("--run_dll", action="store_true")

@@ -77,9 +77,9 @@ class DLL_RNN_Model(object):
         ).to(self.device)
 
         self.theta_h = torch.zeros_like(self.Wh).normal_(
-            mean=0.0, std=0.2).to(self.device)
+            mean=0.0, std=0.05).to(self.device)
         self.theta_y = torch.zeros_like(self.Wy).normal_(
-            mean=0.0, std=0.2).to(self.device)
+            mean=0.0, std=0.05).to(self.device)
 
     def forward(self, inputs_seq):
         """

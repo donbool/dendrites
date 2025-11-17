@@ -11,3 +11,4 @@ bp_model.pt
 data/cache/
 dll_Wh.pt
 dll_Wy.pt
+results/
