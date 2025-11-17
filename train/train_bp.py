@@ -18,11 +18,11 @@ def train_bp(
     metrics_logger=None,
 ):
     """
-    Standard backpropagation training loop for the BP RNN baseline.
+    Standard backpropagation training loop for the BP RNN baseline on POS tagging.
 
     Args:
-        model: BPRNNSentiment
-        train_loader: DataLoader yielding (token_ids, labels)
+        model: BPRNN
+        train_loader: DataLoader yielding (token_ids, labels, mask)
         val_loader: optional DataLoader for validation
         num_epochs: int
         lr: learning rate

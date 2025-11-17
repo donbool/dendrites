@@ -11,11 +11,11 @@ import numpy as np
 
 def evaluate_model(model, data_loader, model_type="bp", device="cuda"):
     """
-    Comprehensive evaluation of a trained model on sequence tagging task.
+    Comprehensive evaluation of a trained model on POS tagging task.
 
     Args:
-        model: Trained model (BPRNNSentiment or DLLSentimentRNN)
-        data_loader: DataLoader for evaluation
+        model: Trained model (BPRNN, DLLRNN, or HybridDLLRNN)
+        data_loader: DataLoader for evaluation with (token_ids, labels, mask) tuples
         model_type: "bp" or "dll"
         device: "cuda" or "cpu"
 

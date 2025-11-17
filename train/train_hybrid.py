@@ -1,11 +1,12 @@
-# train/train_dll.py
+# train/train_hybrid.py
+# Training loop for Hybrid DLL (DLL + temporal credit via eligibility traces)
 
 import torch
 import torch.nn.functional as F
 from experiments.metrics import MetricsLogger
 
 
-def train_dll(
+def train_hybrid(
     model,
     train_loader,
     val_loader=None,
@@ -15,10 +16,10 @@ def train_dll(
     metrics_logger=None,
 ):
     """
-    Training loop for DLL on POS tagging, matching the DLL algorithm in the paper.
+    Training loop for Hybrid DLL model on POS tagging (DLL with eligibility traces).
 
     Args:
-        model: DLLRNN (wrapper around DLL_RNN_Model)
+        model: HybridDLLRNN (hybrid variant with eligibility traces)
         train_loader: dataloader yielding (token_ids, labels, mask)
         val_loader: optional validation loader
         num_epochs: int
@@ -72,14 +73,14 @@ def train_dll(
             total_correct += correct
             total_examples += examples
 
-            # --- 4. DLL update (actual learning happens here, no backprop) ---
+            # --- 4. Hybrid update (DLL + temporal credit via traces) ---
             model.dll_update(labels, mask, epoch)
 
         avg_loss = total_loss / len(train_loader)
         train_acc = total_correct / total_examples
 
         if verbose:
-            print(f"[Epoch {epoch+1}/{num_epochs}] DLL Train Loss: {avg_loss:.4f} | Train Acc: {train_acc:.4f}")
+            print(f"[Epoch {epoch+1}/{num_epochs}] Hybrid Train Loss: {avg_loss:.4f} | Train Acc: {train_acc:.4f}")
 
         # Log metrics
         if metrics_logger is not None:
@@ -90,9 +91,9 @@ def train_dll(
             # Optional validation
             # ----------------------------------
             if val_loader is not None:
-                val_acc_log, val_loss_log = evaluate_dll(model, val_loader, device)
+                val_acc_log, val_loss_log = evaluate_hybrid(model, val_loader, device)
                 if verbose:
-                    print(f"                   DLL Val   Loss: {val_loss_log:.4f} | Val Acc:   {val_acc_log:.4f}")
+                    print(f"                     Hybrid Val   Loss: {val_loss_log:.4f} | Val Acc:   {val_acc_log:.4f}")
 
             metrics_logger.log_epoch(epoch, avg_loss, train_acc, val_loss_log, val_acc_log)
         else:
@@ -100,17 +101,16 @@ def train_dll(
             # Optional validation
             # ----------------------------------
             if val_loader is not None:
-                val_acc, val_loss = evaluate_dll(model, val_loader, device)
+                val_acc, val_loss = evaluate_hybrid(model, val_loader, device)
                 if verbose:
-                    print(f"                   DLL Val   Loss: {val_loss:.4f} | Val Acc:   {val_acc:.4f}")
+                    print(f"                     Hybrid Val   Loss: {val_loss:.4f} | Val Acc:   {val_acc:.4f}")
 
     return model
 
 
-
-def evaluate_dll(model, data_loader, device="cuda"):
+def evaluate_hybrid(model, data_loader, device="cuda"):
     """
-    Evaluation loop for DLL on sequence tagging task.
+    Evaluation loop for Hybrid DLL on sequence tagging task.
     """
     model.eval()
     total_loss = 0

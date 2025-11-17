@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 
-class BPRNNSentiment(nn.Module):
+class BPRNN(nn.Module):
     """
     A simple, clean RNN baseline using standard backpropagation.
 

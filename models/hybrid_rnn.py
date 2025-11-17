@@ -1,4 +1,3 @@
-# models/dll_rnn.py
 import torch
 import torch.nn as nn
 from types import SimpleNamespace
@@ -19,14 +18,16 @@ def linear_deriv(x):
 
 
 # ======================================================================
-#  Core DLL RNN MODEL (copied from original, only stylistic tweaks)
-#  This is the thing you are "studying" / comparing against BP.
+#  Core DLL RNN MODEL + Hybrid Temporal Credit via Eligibility Traces
 # ======================================================================
 
 class DLL_RNN_Model(object):
     """
-    Faithful implementation of the Dendritic Local Learning RNN from the
-    original GitHub, kept as-is so its learning dynamics match the paper.
+    Dendritic Local Learning RNN from the original GitHub, with a small,
+    biologically-inspired extension:
+
+        - Original DLL provides *spatial* credit assignment (local losses)
+        - We add *temporal* credit assignment via eligibility traces on Wh
 
     Shapes follow the original:
         - seq_len: T
@@ -58,6 +59,12 @@ class DLL_RNN_Model(object):
         self.fix_theta_until = args.fix_theta_until
         self.noise = args.noise
 
+        # Optional hybrid flags / hyperparams (with defaults)
+        self.use_traces = getattr(args, "use_traces", True)
+        self.e_decay = getattr(args, "e_decay", 0.92)  # λ
+        self.e_clip = getattr(args, "e_clip", 0.05)  # Conservative clipping for stability
+        self.trace_strength = getattr(args, "trace_strength", 0.1)  # Scale factor for trace contribution
+
         # weights
         self.Wh = torch.empty([self.hidden_size, self.hidden_size]).normal_(
             mean=0.0, std=0.05).to(self.device)
@@ -81,6 +88,17 @@ class DLL_RNN_Model(object):
         self.theta_y = torch.zeros_like(self.Wy).normal_(
             mean=0.0, std=0.05).to(self.device)
 
+        # ------------------------------------------------------------------
+        # Eligibility traces for the recurrent weights Wh across time.
+        # e_Wh_hist[t] is the eligibility trace matrix at time t.
+        # t ranges from 0..T (T+1 entries); at t=0 it's all zeros.
+        # ------------------------------------------------------------------
+        if self.use_traces:
+            self.e_Wh_hist = torch.zeros(
+                self.seq_len + 1, self.hidden_size, self.hidden_size,
+                device=self.device
+            )
+
     def forward(self, inputs_seq):
         """
         inputs_seq: (T, input_size, B)
@@ -91,10 +109,42 @@ class DLL_RNN_Model(object):
             self.inputs = inputs_seq.clone()
             self.hu[0] = self.h0.clone()
             self.hx[0] = self.h0.clone()
+
+            # reset eligibility history for this sequence
+            if self.use_traces:
+                self.e_Wh_hist.zero_()  # e_Wh_hist[0] = 0 by construction
+
             for i, inp in enumerate(inputs_seq):
+                # Standard DLL RNN forward
                 self.hu[i+1] = self.fn(self.Wh @ self.hu[i] + self.Wx @ inp)
                 self.hx[i+1] = self.hu[i+1].clone()
                 self.y[i] = linear(self.Wy @ self.hu[i+1])
+
+                # ---------------------------------------------------------
+                # Hybrid extension: update eligibility trace for Wh at t=i+1
+                # e_Wh_hist[t] = λ e_Wh_hist[t-1] + Hebbian(pre, post)
+                #   pre  ~ hu[i]    (previous hidden state)
+                #   post ~ hu[i+1]  (current hidden state)
+                # We average over batch and use an outer product.
+                # ---------------------------------------------------------
+                if self.use_traces:
+                    pre = self.hu[i]       # (H, B)
+                    post = self.hu[i+1]    # (H, B)
+
+                    pre_b = pre.mean(dim=1, keepdim=True)   # (H, 1)
+                    post_b = post.mean(dim=1, keepdim=True) # (H, 1)
+
+                    hebbian_Wh = post_b @ pre_b.T           # (H, H)
+
+                    # Decayed trace from previous time step
+                    prev_trace = self.e_Wh_hist[i]          # (H, H)
+                    new_trace = self.e_decay * prev_trace + hebbian_Wh
+
+                    # Clip for stability
+                    new_trace = torch.clamp(new_trace, -self.e_clip, self.e_clip)
+
+                    self.e_Wh_hist[i+1] = new_trace
+
             return self.y
 
     def update_weights(self, target_seq, epoch_num, mask_seq=None):
@@ -107,7 +157,7 @@ class DLL_RNN_Model(object):
             ehs = torch.zeros_like(self.hu).to(self.device)
             eys = torch.zeros_like(self.y).to(self.device)
 
-            # backward pass for dendritic errors
+            # backward pass for dendritic errors (original DLL logic)
             for i, tar in reversed(list(enumerate(target_seq))):
                 eys[i] = tar - self.y[i]
 
@@ -134,16 +184,35 @@ class DLL_RNN_Model(object):
             dtheta_y_T = torch.zeros_like(self.Wy.T).to(self.device)
             dtheta_h_T = torch.zeros_like(self.Wh.T).to(self.device)
 
+            # Extra accumulator for temporal credit via traces
+            if self.use_traces:
+                temporal_grad_Wh = torch.zeros_like(self.Wh).to(self.device)
+
+            # Main gradient accumulation loop (original + hybrid bits)
             for i, inp in reversed(list(enumerate(self.inputs))):
                 fn_deriv = self.fn_deriv(self.Wh @ self.hu[i] + self.Wx @ inp)
+
+                # Original DLL weight updates
                 dWy += (eys[i] * linear_deriv(self.Wy @ self.hu[i+1])) @ self.hu[i+1].T
                 dWx += (ehs[i] * fn_deriv) @ inp.T
                 dWh += (ehs[i] * fn_deriv) @ self.hu[i].T
+
                 dtheta_y_T -= ehs[i] @ (
                     eys[i] * linear_deriv(self.Wy @ self.hu[i+1])
                 ).T
                 if i >= 1:
                     dtheta_h_T -= ehs[i-1] @ (ehs[i] * fn_deriv).T
+
+                # ---------------------------------------------------------
+                # Hybrid temporal credit assignment:
+                #   temporal_grad_Wh += mod_i * e_Wh_hist[i+1]
+                # where mod_i is a scalar "error magnitude" at timestep i.
+                # ---------------------------------------------------------
+                if self.use_traces:
+                    # eys[i]: (C, B). Use its mean absolute value as modulatory signal
+                    mod_i = torch.mean(torch.abs(eys[i]))  # scalar
+                    # Scale trace contribution to avoid dominating DLL signal
+                    temporal_grad_Wh += self.trace_strength * mod_i * self.e_Wh_hist[i+1]
 
             if not self.noclamp:
                 dWy = torch.clamp(dWy, -self.clamp_val, self.clamp_val)
@@ -154,10 +223,21 @@ class DLL_RNN_Model(object):
                 dtheta_h_T = torch.clamp(
                     dtheta_h_T, -self.clamp_val, self.clamp_val)
 
+                # Combine DLL gradient with temporal credit gradient (AFTER clamping)
+                if self.use_traces:
+                    temporal_grad_Wh = torch.clamp(temporal_grad_Wh, -self.clamp_val, self.clamp_val)
+                    dWh += temporal_grad_Wh
+            else:
+                # Combine DLL gradient with temporal credit gradient (when no clamping)
+                if self.use_traces:
+                    dWh += temporal_grad_Wh
+
+            # Apply weight updates
             self.Wy += self.weight_learning_rate * dWy
             self.Wx += self.weight_learning_rate * dWx
             self.Wh += self.weight_learning_rate * dWh
 
+            # Theta updates (unchanged from original)
             if epoch_num >= self.fix_theta_until:
                 self.theta_y += (
                     self.weight_learning_rate * dtheta_y_T.T /
@@ -170,17 +250,17 @@ class DLL_RNN_Model(object):
 
 
 # ======================================================================
-#  Thin PyTorch-friendly wrapper for sequence tagging (e.g., POS tagging)
+#  Thin PyTorch-friendly wrapper for sequence tagging (e.g., POS)
 # ======================================================================
 
-class DLLRNN(nn.Module):
+class HybridDLLRNN(nn.Module):
     """
-    Clean wrapper around DLL_RNN_Model for sequence tagging (e.g., POS tagging).
+    Clean wrapper around DLL_RNN_Model with eligibility traces for sequence tagging (e.g., POS tagging).
 
     - Uses an embedding layer over token ids
-    - Runs DLL_RNN_Model on the sequence of embeddings
+    - Runs DLL_RNN_Model on the sequence of embeddings with temporal credit via traces
     - Returns logits for ALL time steps (sequence tagging mode)
-    - Provides a .dll_update(...) method that calls the exact DLL update rule
+    - Provides a .dll_update(...) method that calls the DLL update rule with trace-based temporal credit
 
     Important constraints (to keep life simple & faithful):
         - Uses a FIXED seq_len (max sequence length after padding/truncation)
@@ -202,6 +282,9 @@ class DLLRNN(nn.Module):
         fix_theta_until: int = 1,
         noclamp: bool = False,
         noise: float = 0.0,
+        use_traces: bool = True,
+        e_decay: float = 0.92,
+        e_clip: float = 0.1,
     ):
         super().__init__()
         self.device = device
@@ -227,7 +310,12 @@ class DLLRNN(nn.Module):
         args.noclamp = noclamp
         args.noise = noise
 
-        # Core DLL engine
+        # Hybrid-specific flags / hyperparams
+        args.use_traces = use_traces
+        args.e_decay = e_decay
+        args.e_clip = e_clip
+
+        # Core DLL engine (now hybrid-capable)
         self.dll_core = DLL_RNN_Model(args, device=device)
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
@@ -235,7 +323,7 @@ class DLLRNN(nn.Module):
         token_ids: (B, T) with B == batch_size, T == seq_len
 
         Returns:
-            logits: (B, T, num_classes)  for sequence tagging (per-token)
+            logits: (B, T, num_classes) for sequence tagging (per-token)
         """
         B, T = token_ids.shape
         assert B == self.batch_size, (
@@ -299,5 +387,5 @@ class DLLRNN(nn.Module):
             target_seq[t] = targets_onehot_t.T
             mask_seq[t] = mask_t  # Store mask for this timestep
 
-        # Call the exact DLL update rule with masking
+        # Call the DLL update rule (now with optional temporal credit)
         self.dll_core.update_weights(target_seq, epoch, mask_seq=mask_seq)
