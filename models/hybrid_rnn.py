@@ -131,10 +131,9 @@ class DLL_RNN_Model(object):
                     pre = self.hu[i]       # (H, B)
                     post = self.hu[i+1]    # (H, B)
 
-                    pre_b = pre.mean(dim=1, keepdim=True)   # (H, 1)
-                    post_b = post.mean(dim=1, keepdim=True) # (H, 1)
-
-                    hebbian_Wh = post_b @ pre_b.T           # (H, H)
+                    # Compute Hebbian correlation: outer product averaged over batch
+                    # post[:, b] @ pre[:, b].T for each sample, then average
+                    hebbian_Wh = (post @ pre.T) / pre.shape[1]  # (H, H)
 
                     # Decayed trace from previous time step
                     prev_trace = self.e_Wh_hist[i]          # (H, H)
@@ -204,15 +203,19 @@ class DLL_RNN_Model(object):
                     dtheta_h_T -= ehs[i-1] @ (ehs[i] * fn_deriv).T
 
                 # ---------------------------------------------------------
-                # Hybrid temporal credit assignment:
-                #   temporal_grad_Wh += mod_i * e_Wh_hist[i+1]
-                # where mod_i is a scalar "error magnitude" at timestep i.
+                # Hybrid temporal credit assignment via eligibility traces:
+                # Instead of just weighting traces by current error, use traces to
+                # provide an ALTERNATIVE learning signal for Wh that emphasizes
+                # long-range Hebbian correlations with current errors.
                 # ---------------------------------------------------------
                 if self.use_traces:
-                    # eys[i]: (C, B). Use its mean absolute value as modulatory signal
-                    mod_i = torch.mean(torch.abs(eys[i]))  # scalar
-                    # Scale trace contribution to avoid dominating DLL signal
-                    temporal_grad_Wh += self.trace_strength * mod_i * self.e_Wh_hist[i+1]
+                    # The key insight: traces accumulate which input-output pairs co-fired
+                    # in the past. Current errors should credit those past correlations.
+                    # Don't add to dWh; instead, INTERPOLATE between DLL and trace gradients
+                    error_mag = torch.mean(torch.abs(ehs[i]))  # scalar
+                    trace_contrib = error_mag * self.e_Wh_hist[i+1]  # (H, H)
+                    # Store this separately - we'll blend it at the end
+                    temporal_grad_Wh += self.trace_strength * trace_contrib
 
             if not self.noclamp:
                 dWy = torch.clamp(dWy, -self.clamp_val, self.clamp_val)
@@ -285,6 +288,7 @@ class HybridDLLRNN(nn.Module):
         use_traces: bool = True,
         e_decay: float = 0.92,
         e_clip: float = 0.1,
+        trace_strength: float = 1.0,
     ):
         super().__init__()
         self.device = device
@@ -314,6 +318,7 @@ class HybridDLLRNN(nn.Module):
         args.use_traces = use_traces
         args.e_decay = e_decay
         args.e_clip = e_clip
+        args.trace_strength = trace_strength
 
         # Core DLL engine (now hybrid-capable)
         self.dll_core = DLL_RNN_Model(args, device=device)
