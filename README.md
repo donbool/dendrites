@@ -1,6 +1,6 @@
-# dendritic localized learning vs backpropagation on POS tagging
+# dendritic localized learning extended to RNNs
 
-can biologically plausible dendritic localized learning (DLL) match standard backpropagation on sequence tagging tasks?
+can biologically plausible dendritic localized learning (DLL) match standard backpropagation on sequence tagging tasks? no
 
 ## proj overview
 
