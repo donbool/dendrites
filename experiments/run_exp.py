@@ -14,12 +14,14 @@ from models.hybrid_rnn import HybridDLLRNN
 from models.hierarchical_rnn import HierarchicalDLLRNN
 from models.temporal_rnn import TemporalDLLRNN
 from models.predictive_coding_rnn import PredictiveCoderRNN
+from models.bidirectional_dll_rnn import BiDLLRNN
 from train.train_bp import train_bp
 from train.train_dll import train_dll
 from train.train_hybrid import train_hybrid
 from train.train_hierarchical import train_hierarchical
 from train.train_temporal import train_temporal
 from train.train_predictive import train_predictive
+from train.train_bidirectional import train_bidirectional
 from data.dataset_pos_tagging import load_pos_tagging
 from experiments.metrics import MetricsLogger
 from experiments.eval_models import evaluate_model, print_metrics, compare_models
@@ -278,7 +280,47 @@ def run_experiment(args):
         print_metrics(predictive_metrics_final, split="validation")
 
     # --------------------------
-    # 7. COMPARISON
+    # 7. BIDIRECTIONAL DLL (Two Independent Cores: Forward + Backward)
+    # --------------------------
+    bidirectional_metrics_final = None
+    if args.run_bidirectional:
+        print("\n========== TRAINING BIDIRECTIONAL DLL MODEL ==========\n")
+
+        bidirectional_model = BiDLLRNN(
+            vocab_size=len(word_vocab),
+            embed_dim=args.embed_dim,
+            hidden_size=args.hidden_size,
+            num_classes=len(pos_vocab),
+            seq_len=args.max_len,
+            batch_size=args.batch_size,
+            device=device,
+            weight_lr=args.lr_bidirectional,
+        )
+
+        bidirectional_logger = MetricsLogger(log_dir="./results", model_name="bidirectional")
+
+        train_bidirectional(
+            model=bidirectional_model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            num_epochs=args.epochs_bidirectional,
+            device=device,
+            metrics_logger=bidirectional_logger,
+        )
+
+        bidirectional_logger.save()
+        torch.save(bidirectional_model.dll_core.Wh_fwd, "results/bidirectional_Wh_fwd.pt")
+        torch.save(bidirectional_model.dll_core.Wh_bwd, "results/bidirectional_Wh_bwd.pt")
+        torch.save(bidirectional_model.dll_core.theta_h_fwd, "results/bidirectional_theta_h_fwd.pt")
+        torch.save(bidirectional_model.dll_core.theta_h_bwd, "results/bidirectional_theta_h_bwd.pt")
+        print("Saved Bidirectional weights → results/bidirectional_*.pt")
+
+        # Evaluate on validation set
+        bidirectional_metrics_final = evaluate_model(bidirectional_model, val_loader, model_type="dll", device=device)
+        print_metrics(bidirectional_metrics_final, split="validation")
+
+    # --------------------------
+    # 8. COMPARISON
     # --------------------------
     if bp_metrics_final is not None and dll_metrics_final is not None:
         compare_models(bp_metrics_final, dll_metrics_final)
@@ -315,6 +357,14 @@ def run_experiment(args):
         print("\n========== BP vs PREDICTIVE CODING COMPARISON ==========")
         compare_models(bp_metrics_final, predictive_metrics_final)
 
+    if dll_metrics_final is not None and bidirectional_metrics_final is not None:
+        print("\n========== DLL vs BIDIRECTIONAL DLL COMPARISON ==========")
+        compare_models(dll_metrics_final, bidirectional_metrics_final)
+
+    if bp_metrics_final is not None and bidirectional_metrics_final is not None:
+        print("\n========== BP vs BIDIRECTIONAL DLL COMPARISON ==========")
+        compare_models(bp_metrics_final, bidirectional_metrics_final)
+
 
 if __name__ == "__main__":
 
@@ -331,6 +381,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs_hierarchical", type=int, default=5)
     parser.add_argument("--epochs_temporal", type=int, default=5)
     parser.add_argument("--epochs_predictive", type=int, default=5)
+    parser.add_argument("--epochs_bidirectional", type=int, default=5)
 
     parser.add_argument("--lr_bp", type=float, default=1e-2)
     parser.add_argument("--lr_dll", type=float, default=5e-4)
@@ -338,6 +389,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr_hierarchical", type=float, default=5e-4)
     parser.add_argument("--lr_temporal", type=float, default=5e-4)
     parser.add_argument("--lr_predictive", type=float, default=5e-4)
+    parser.add_argument("--lr_bidirectional", type=float, default=5e-4)
 
     # Hybrid-specific hyperparameters
     parser.add_argument("--use_traces", type=bool, default=False, help="Enable eligibility traces in hybrid model")
@@ -357,6 +409,7 @@ if __name__ == "__main__":
     parser.add_argument("--run_hierarchical", action="store_true")
     parser.add_argument("--run_temporal", action="store_true")
     parser.add_argument("--run_predictive", action="store_true")
+    parser.add_argument("--run_bidirectional", action="store_true")
 
     args = parser.parse_args()
 
