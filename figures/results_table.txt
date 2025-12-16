@@ -1,0 +1,40 @@
+=== LATEX TABLE ===
+
+\begin{table}
+\caption{Performance comparison of DLL variants on Penn Treebank POS tagging}
+\label{tab:results}
+\begin{tabular}{cccc}
+\toprule
+Rank & Model & Accuracy & Loss \\
+\midrule
+1 & Backprop & 88.90 & 0.66 \\
+2 & Bidirectional DLL & 76.63 & 3.27 \\
+3 & Hybrid DLL & 70.22 & 3.33 \\
+4 & Hierarchical DLL & 69.84 & 3.34 \\
+5 & Standard DLL & 69.68 & 3.35 \\
+6 & Predictive DLL & 69.27 & 3.35 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+=== MARKDOWN TABLE ===
+
+|   Rank | Model             |   Accuracy |   Loss |
+|-------:|:------------------|-----------:|-------:|
+|      1 | Backprop          |      88.90 |   0.66 |
+|      2 | Bidirectional DLL |      76.63 |   3.27 |
+|      3 | Hybrid DLL        |      70.22 |   3.33 |
+|      4 | Hierarchical DLL  |      69.84 |   3.34 |
+|      5 | Standard DLL      |      69.68 |   3.35 |
+|      6 | Predictive DLL    |      69.27 |   3.35 |
+
+=== CSV ===
+
+Rank,Model,Accuracy,Loss
+1,Backprop,88.90422301959701,0.663383387029171
+2,Bidirectional DLL,76.63262489649462,3.270277976989746
+3,Hybrid DLL,70.21805133866961,3.3342167983452478
+4,Hierarchical DLL,69.84267181893459,3.343451643983523
+5,Standard DLL,69.68258349434171,3.3462287237246833
+6,Predictive DLL,69.27408225227711,3.3532439271608987

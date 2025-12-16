@@ -90,7 +90,7 @@ class ResultsVisualizer:
         - Bottom right: Validation loss
         """
         if models is None:
-            models = ['bp', 'dll', 'hierarchical', 'temporal', 'predictive', 'bidirectional']
+            models = ['bp', 'dll', 'hierarchical', 'hybrid', 'predictive', 'bidirectional']
 
         fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
@@ -169,7 +169,7 @@ class ResultsVisualizer:
         Bar chart comparing final validation accuracy across all models.
         """
         if models is None:
-            models = ['bp', 'dll', 'hierarchical', 'temporal', 'predictive', 'bidirectional']
+            models = ['bp', 'dll', 'hierarchical', 'hybrid', 'predictive', 'bidirectional']
 
         model_display_names = {
             'bp': 'Backprop',
@@ -241,12 +241,12 @@ class ResultsVisualizer:
         Focused comparison: Standard DLL vs all extensions.
         Shows how each extension performs relative to baseline DLL.
         """
-        models = ['dll', 'hierarchical', 'temporal', 'predictive', 'bidirectional']
+        models = ['dll', 'hierarchical', 'hybrid', 'predictive', 'bidirectional']
 
         model_display_names = {
             'dll': 'Standard DLL\n(baseline)',
             'hierarchical': 'Hierarchical\nDLL',
-            'temporal': 'Temporal\nDLL',
+            'hybrid': 'Hybrid\nDLL',
             'predictive': 'Predictive\nDLL',
             'bidirectional': 'Bidirectional\nDLL'
         }
@@ -321,7 +321,7 @@ class ResultsVisualizer:
         Create LaTeX-formatted results table.
         """
         if models is None:
-            models = ['bp', 'dll', 'hierarchical', 'temporal', 'predictive', 'bidirectional']
+            models = ['bp', 'dll', 'hierarchical', 'hybrid', 'predictive', 'bidirectional']
 
         model_display_names = {
             'bp': 'Backprop',
@@ -390,13 +390,13 @@ class ResultsVisualizer:
         Plot how quickly each model reaches 60% validation accuracy.
         """
         if models is None:
-            models = ['bp', 'dll', 'hierarchical', 'temporal', 'predictive', 'bidirectional']
+            models = ['bp', 'dll', 'hierarchical', 'hybrid', 'predictive', 'bidirectional']
 
         model_display_names = {
             'bp': 'Backprop',
             'dll': 'DLL',
             'hierarchical': 'Hierarchical DLL',
-            'temporal': 'Temporal DLL',
+            'hybrid': 'Hybrid DLL',
             'predictive': 'Predictive DLL',
             'bidirectional': 'Bidirectional DLL'
         }

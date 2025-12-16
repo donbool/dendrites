@@ -57,13 +57,22 @@ python3 experiments/run_exp.py \
     --max_len $MAX_LEN
 
 echo ""
-echo "========== 4/6: TRAINING TEMPORAL DLL =========="
+echo "========== 4/6: TRAINING HYBRID DLL (ELIGIBILITY TRACES) =========="
 python3 experiments/run_exp.py \
-    --run_temporal \
-    --epochs_temporal $EPOCHS \
-    --lr_temporal $LR_DLL \
+    --run_hybrid \
+    --epochs_hybrid $EPOCHS \
+    --lr_hybrid $LR_DLL \
     --batch_size $BATCH_SIZE \
     --max_len $MAX_LEN
+
+echo ""
+echo "========== 5/6: TRAINING TEMPORAL DLL =========="
+# python3 experiments/run_exp.py \
+#     --run_temporal \
+#     --epochs_temporal $EPOCHS \
+#     --lr_temporal $LR_DLL \
+#     --batch_size $BATCH_SIZE \
+#     --max_len $MAX_LEN
 
 echo ""
 echo "========== 5/6: TRAINING PREDICTIVE CODING DLL =========="
